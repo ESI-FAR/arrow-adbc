@@ -92,6 +92,17 @@ class SqliteQuirks : public adbc_validation::DriverQuirks {
     return ddl;
   }
 
+  std::optional<std::string> ForeignKeyTableDdl(std::string_view name, std::string_view ref_name) const override {
+    std::string ddl = "CREATE TABLE ";
+    ddl += name;
+    ddl += " (alt_id INTEGER FOREIGN KEY(";
+    ddl += name;
+    ddl += ") REFERENCES ";
+    ddl += ref_name;
+    ddl += "(id))";
+    return ddl;
+  }
+
   bool supports_concurrent_statements() const override { return true; }
 
   std::string catalog() const override { return "main"; }

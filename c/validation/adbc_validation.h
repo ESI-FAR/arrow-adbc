@@ -76,6 +76,15 @@ class DriverQuirks {
     return std::nullopt;
   }
 
+  /// \brief Get the statement to create a table with a primary key, or nullopt if not
+  /// supported.
+  ///
+  /// The table should have one column:
+  /// - "alt_id" of Arrow type int64 (foreign key) referencing "id" in the primary key
+  virtual std::optional<std::string> ForeignKeyTableDdl(std::string_view name, std::string_view ref_name) const {
+    return std::nullopt;
+  }
+
   /// \brief Return the SQL to reference the bind parameter of the given index
   virtual std::string BindParameter(int index) const { return "?"; }
 
@@ -168,6 +177,7 @@ class ConnectionTest {
   void TestMetadataGetObjectsColumns();
   void TestMetadataGetObjectsConstraints();
   void TestMetadataGetObjectsPrimaryKey();
+  void TestMetadataGetObjectsForeignKey();
 
  protected:
   struct AdbcError error;
@@ -175,28 +185,29 @@ class ConnectionTest {
   struct AdbcConnection connection;
 };
 
-#define ADBCV_TEST_CONNECTION(FIXTURE)                                                \
-  static_assert(std::is_base_of<adbc_validation::ConnectionTest, FIXTURE>::value,     \
-                ADBCV_STRINGIFY(FIXTURE) " must inherit from ConnectionTest");        \
-  TEST_F(FIXTURE, NewInit) { TestNewInit(); }                                         \
-  TEST_F(FIXTURE, Release) { TestRelease(); }                                         \
-  TEST_F(FIXTURE, Concurrent) { TestConcurrent(); }                                   \
-  TEST_F(FIXTURE, AutocommitDefault) { TestAutocommitDefault(); }                     \
-  TEST_F(FIXTURE, AutocommitToggle) { TestAutocommitToggle(); }                       \
-  TEST_F(FIXTURE, MetadataGetInfo) { TestMetadataGetInfo(); }                         \
-  TEST_F(FIXTURE, MetadataGetTableSchema) { TestMetadataGetTableSchema(); }           \
-  TEST_F(FIXTURE, MetadataGetTableTypes) { TestMetadataGetTableTypes(); }             \
-  TEST_F(FIXTURE, MetadataGetObjectsCatalogs) { TestMetadataGetObjectsCatalogs(); }   \
-  TEST_F(FIXTURE, MetadataGetObjectsDbSchemas) { TestMetadataGetObjectsDbSchemas(); } \
-  TEST_F(FIXTURE, MetadataGetObjectsTables) { TestMetadataGetObjectsTables(); }       \
-  TEST_F(FIXTURE, MetadataGetObjectsTablesTypes) {                                    \
-    TestMetadataGetObjectsTablesTypes();                                              \
-  }                                                                                   \
-  TEST_F(FIXTURE, MetadataGetObjectsColumns) { TestMetadataGetObjectsColumns(); }     \
-  TEST_F(FIXTURE, MetadataGetObjectsConstraints) {                                    \
-    TestMetadataGetObjectsConstraints();                                              \
-  }                                                                                   \
-  TEST_F(FIXTURE, MetadataGetObjectsPrimaryKey) { TestMetadataGetObjectsPrimaryKey(); }
+#define ADBCV_TEST_CONNECTION(FIXTURE)                                                  \
+  static_assert(std::is_base_of<adbc_validation::ConnectionTest, FIXTURE>::value,       \
+                ADBCV_STRINGIFY(FIXTURE) " must inherit from ConnectionTest");          \
+  TEST_F(FIXTURE, NewInit) { TestNewInit(); }                                           \
+  TEST_F(FIXTURE, Release) { TestRelease(); }                                           \
+  TEST_F(FIXTURE, Concurrent) { TestConcurrent(); }                                     \
+  TEST_F(FIXTURE, AutocommitDefault) { TestAutocommitDefault(); }                       \
+  TEST_F(FIXTURE, AutocommitToggle) { TestAutocommitToggle(); }                         \
+  TEST_F(FIXTURE, MetadataGetInfo) { TestMetadataGetInfo(); }                           \
+  TEST_F(FIXTURE, MetadataGetTableSchema) { TestMetadataGetTableSchema(); }             \
+  TEST_F(FIXTURE, MetadataGetTableTypes) { TestMetadataGetTableTypes(); }               \
+  TEST_F(FIXTURE, MetadataGetObjectsCatalogs) { TestMetadataGetObjectsCatalogs(); }     \
+  TEST_F(FIXTURE, MetadataGetObjectsDbSchemas) { TestMetadataGetObjectsDbSchemas(); }   \
+  TEST_F(FIXTURE, MetadataGetObjectsTables) { TestMetadataGetObjectsTables(); }         \
+  TEST_F(FIXTURE, MetadataGetObjectsTablesTypes) {                                      \
+    TestMetadataGetObjectsTablesTypes();                                                \
+  }                                                                                     \
+  TEST_F(FIXTURE, MetadataGetObjectsColumns) { TestMetadataGetObjectsColumns(); }       \
+  TEST_F(FIXTURE, MetadataGetObjectsConstraints) {                                      \
+    TestMetadataGetObjectsConstraints();                                                \
+  }                                                                                     \
+  TEST_F(FIXTURE, MetadataGetObjectsPrimaryKey) { TestMetadataGetObjectsPrimaryKey(); } \
+  TEST_F(FIXTURE, MetadataGetObjectsForeignKey) { TestMetadataGetObjectsForeignKey(); }
 
 class StatementTest {
  public:
