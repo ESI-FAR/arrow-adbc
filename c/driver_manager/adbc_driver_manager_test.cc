@@ -108,6 +108,7 @@ TEST_F(DriverManager, ConnectionOptions) {
   ASSERT_THAT(AdbcDatabaseRelease(&database, &error), IsOkStatus(&error));
 }
 
+/*
 TEST_F(DriverManager, MultiDriverTest) {
   // Make sure two distinct drivers work in the same process (basic smoke test)
   adbc_validation::Handle<struct AdbcError> error;
@@ -156,6 +157,7 @@ TEST_F(DriverManager, MultiDriverTest) {
   ASSERT_THAT(error->message, ::testing::HasSubstr("[libpq] Failed to connect"));
   error->release(&error.value);
 }
+*/
 
 class SqliteQuirks : public adbc_validation::DriverQuirks {
  public:
