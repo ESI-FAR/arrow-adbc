@@ -34,9 +34,15 @@
           maven
         ];
 
+        # Append the built driver paths to LD_LIBRARY_PATH. This cannot be
+        # done in the flake env vars.
+        shellHook = ''
+          LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/build/driver/sqlite:$PWD/build/driver/postgresql
+        '';
+
       # Environment variables
       # fixes libstdc++ issues, libz.so.1 issues
-      LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib/:${pkgs.lib.makeLibraryPath packages}:/home/ole/code/arrow-adbc/build/driver/sqlite:/home/ole/code/arrow-adbc/build/driver/postgresql";
+      LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib/:${pkgs.lib.makeLibraryPath packages}";
 
       # URI for a running PostgreSQL instance for `ctest`
       ADBC_POSTGRESQL_TEST_URI="postgresql://postgres:mysecretpassword@localhost:5432/postgres";
