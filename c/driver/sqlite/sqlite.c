@@ -506,7 +506,7 @@ AdbcStatusCode SqliteConnectionGetConstraintsImpl(
     if (fk_id != prev_fk_id) {
       CHECK_NA(INTERNAL, ArrowArrayAppendNull(constraint_name_col, 1), error);
       CHECK_NA(INTERNAL,
-               ArrowArrayAppendString(constraint_name_col, ArrowCharView("FOREIGN KEY")),
+               ArrowArrayAppendString(constraint_type_col, ArrowCharView("FOREIGN KEY")),
                error);
 
       if (prev_fk_id != -1) {
