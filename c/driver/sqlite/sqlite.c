@@ -511,6 +511,7 @@ AdbcStatusCode SqliteConnectionGetConstraintsImpl(
 
       if (prev_fk_id != -1) {
         CHECK_NA(INTERNAL, ArrowArrayFinishElement(constraint_column_names_col), error);
+        CHECK_NA(INTERNAL, ArrowArrayFinishElement(constraint_column_usage_items), error);
         CHECK_NA(INTERNAL, ArrowArrayFinishElement(constraint_column_usage_col), error);
         CHECK_NA(INTERNAL, ArrowArrayFinishElement(table_constraints_items), error);
       }
@@ -520,7 +521,7 @@ AdbcStatusCode SqliteConnectionGetConstraintsImpl(
                ArrowArrayAppendString(
                    constraint_column_names_items,
                    (struct ArrowStringView){
-                       .data = from_col, .size_bytes = sqlite3_column_bytes(pk_stmt, 3)}),
+                       .data = from_col, .size_bytes = sqlite3_column_bytes(fk_stmt, 3)}),
                error);
       CHECK_NA(INTERNAL, ArrowArrayAppendString(fk_catalog_col, ArrowCharView("main")),
                error);
@@ -529,19 +530,20 @@ AdbcStatusCode SqliteConnectionGetConstraintsImpl(
                ArrowArrayAppendString(
                    fk_table_col,
                    (struct ArrowStringView){
-                       .data = to_table, .size_bytes = sqlite3_column_bytes(pk_stmt, 2)}),
+                       .data = to_table, .size_bytes = sqlite3_column_bytes(fk_stmt, 2)}),
                error);
       CHECK_NA(INTERNAL,
                ArrowArrayAppendString(
                    fk_column_name_col,
                    (struct ArrowStringView){
-                       .data = to_col, .size_bytes = sqlite3_column_bytes(pk_stmt, 4)}),
+                       .data = to_col, .size_bytes = sqlite3_column_bytes(fk_stmt, 4)}),
                error);
     }
   }
   RAISE(INTERNAL, rc == SQLITE_DONE, sqlite3_errmsg(conn->conn), error);
   if (prev_fk_id != -1) {
     CHECK_NA(INTERNAL, ArrowArrayFinishElement(constraint_column_names_col), error);
+    CHECK_NA(INTERNAL, ArrowArrayFinishElement(constraint_column_usage_items), error);
     CHECK_NA(INTERNAL, ArrowArrayFinishElement(constraint_column_usage_col), error);
     CHECK_NA(INTERNAL, ArrowArrayFinishElement(table_constraints_items), error);
   }
