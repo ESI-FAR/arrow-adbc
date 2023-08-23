@@ -919,25 +919,48 @@ void ConnectionTest::TestMetadataGetObjectsForeignKey() {
     GTEST_SKIP();
   }
 
-  std::optional<std::string> maybe_ddl = quirks()->ForeignKeyTableDdl("adbc_fkey_test", "adbc_pkey_test");
-  if (!maybe_ddl.has_value()) {
+  std::optional<std::string> maybe_parent_ddl =
+      quirks()->ForeignKeyParentTableDdl("adbc_fkey_parent_test");
+  if (!maybe_parent_ddl.has_value()) {
     GTEST_SKIP();
   }
-  std::string ddl = std::move(*maybe_ddl);
+  std::string parent_ddl = std::move(*maybe_parent_ddl);
 
-  ASSERT_THAT(quirks()->DropTable(&connection, "adbc_fkey_test", &error),
+  std::optional<std::string> maybe_child_ddl =
+      quirks()->ForeignKeyChildTableDdl("adbc_fkey_parent_test", "adbc_fkey_child_test");
+  if (!maybe_child_ddl.has_value()) {
+    GTEST_SKIP();
+  }
+  std::string child_ddl = std::move(*maybe_child_ddl);
+
+  // first drop the child table, since the parent table depends on it
+  ASSERT_THAT(quirks()->DropTable(&connection, "adbc_fkey_child_test", &error),
+              IsOkStatus(&error));
+  ASSERT_THAT(quirks()->DropTable(&connection, "adbc_fkey_parent_test", &error),
               IsOkStatus(&error));
 
   {
-    Handle<AdbcStatement> statement;
-    ASSERT_THAT(AdbcStatementNew(&connection, &statement.value, &error),
+    Handle<AdbcStatement> parent_statement;
+    ASSERT_THAT(AdbcStatementNew(&connection, &parent_statement.value, &error),
                 IsOkStatus(&error));
-    ASSERT_THAT(AdbcStatementSetSqlQuery(&statement.value, ddl.c_str(), &error),
-                IsOkStatus(&error));
-    int64_t rows_affected = 0;
     ASSERT_THAT(
-        AdbcStatementExecuteQuery(&statement.value, nullptr, &rows_affected, &error),
+        AdbcStatementSetSqlQuery(&parent_statement.value, parent_ddl.c_str(), &error),
         IsOkStatus(&error));
+    int64_t parent_rows_affected = 0;
+    ASSERT_THAT(AdbcStatementExecuteQuery(&parent_statement.value, nullptr,
+                                          &parent_rows_affected, &error),
+                IsOkStatus(&error));
+
+    Handle<AdbcStatement> child_statement;
+    ASSERT_THAT(AdbcStatementNew(&connection, &child_statement.value, &error),
+                IsOkStatus(&error));
+    ASSERT_THAT(
+        AdbcStatementSetSqlQuery(&child_statement.value, child_ddl.c_str(), &error),
+        IsOkStatus(&error));
+    int64_t child_rows_affected = 0;
+    ASSERT_THAT(AdbcStatementExecuteQuery(&child_statement.value, nullptr,
+                                          &child_rows_affected, &error),
+                IsOkStatus(&error));
   }
 
   adbc_validation::StreamReader reader;
@@ -954,34 +977,107 @@ void ConnectionTest::TestMetadataGetObjectsForeignKey() {
   ASSERT_NE(*get_objects_data, nullptr)
       << "could not initialize the AdbcGetObjectsData object";
 
-  struct AdbcGetObjectsTable* table =
-      AdbcGetObjectsDataGetTableByName(*get_objects_data, quirks()->catalog().c_str(),
-                                       quirks()->db_schema().c_str(), "adbc_pkey_test");
-  ASSERT_NE(table, nullptr) << "could not find adbc_pkey_test table";
-
-  ASSERT_EQ(table->n_table_columns, 1);
-  struct AdbcGetObjectsColumn* column = AdbcGetObjectsDataGetColumnByName(
+  // test parent table
+  struct AdbcGetObjectsTable* parent_table = AdbcGetObjectsDataGetTableByName(
       *get_objects_data, quirks()->catalog().c_str(), quirks()->db_schema().c_str(),
-      "adbc_pkey_test", "id");
-  ASSERT_NE(column, nullptr) << "could not find id column on adbc_pkey_test table";
+      "adbc_fkey_parent_test");
+  ASSERT_NE(parent_table, nullptr) << "could not find adbc_fkey_parent_test table";
 
-  ASSERT_EQ(table->n_table_constraints, 1)
-      << "expected 1 constraint on adbc_pkey_test table, found: "
-      << table->n_table_constraints;
+  ASSERT_EQ(parent_table->n_table_columns, 1);
+  struct AdbcGetObjectsColumn* parent_column = AdbcGetObjectsDataGetColumnByName(
+      *get_objects_data, quirks()->catalog().c_str(), quirks()->db_schema().c_str(),
+      "adbc_fkey_parent_test", "id");
+  ASSERT_NE(parent_column, nullptr)
+      << "could not find id column on adbc_fkey_parent_test table";
 
-  struct AdbcGetObjectsConstraint* constraint = table->table_constraints[0];
+  ASSERT_EQ(parent_table->n_table_constraints, 1)
+      << "expected 1 constraint on adbc_fkey_parent_test table, found: "
+      << parent_table->n_table_constraints;
 
-  std::string_view constraint_type(constraint->constraint_type.data,
-                                   constraint->constraint_type.size_bytes);
-  ASSERT_EQ(constraint_type, "PRIMARY KEY");
-  ASSERT_EQ(constraint->n_column_names, 1)
-      << "expected constraint adbc_pkey_test_pkey to be applied to 1 column, found: "
-      << constraint->n_column_names;
+  struct AdbcGetObjectsConstraint* parent_constraint = parent_table->table_constraints[0];
 
-  std::string_view constraint_column_name(
-      constraint->constraint_column_names[0].data,
-      constraint->constraint_column_names[0].size_bytes);
-  ASSERT_EQ(constraint_column_name, "id");
+  std::string_view parent_constraint_type(parent_constraint->constraint_type.data,
+                                          parent_constraint->constraint_type.size_bytes);
+  ASSERT_EQ(parent_constraint_type, "PRIMARY KEY");
+  ASSERT_EQ(parent_constraint->n_column_names, 1)
+      << "expected constraint adbc_fkey_parent_test_fkey to be applied to 1 column, "
+         "found: "
+      << parent_constraint->n_column_names;
+
+  std::string_view parent_constraint_column_name(
+      parent_constraint->constraint_column_names[0].data,
+      parent_constraint->constraint_column_names[0].size_bytes);
+  ASSERT_EQ(parent_constraint_column_name, "id");
+
+  // test child table
+  struct AdbcGetObjectsTable* child_table = AdbcGetObjectsDataGetTableByName(
+      *get_objects_data, quirks()->catalog().c_str(), quirks()->db_schema().c_str(),
+      "adbc_fkey_child_test");
+  ASSERT_NE(child_table, nullptr) << "could not find adbc_fkey_child_test table";
+
+  ASSERT_EQ(child_table->n_table_columns, 1);
+  struct AdbcGetObjectsColumn* child_column = AdbcGetObjectsDataGetColumnByName(
+      *get_objects_data, quirks()->catalog().c_str(), quirks()->db_schema().c_str(),
+      "adbc_fkey_child_test", "parent_id");
+  ASSERT_NE(child_column, nullptr)
+      << "could not find parent_id column on adbc_fkey_child_test table";
+
+  ASSERT_EQ(child_table->n_table_constraints, 1)
+      << "expected 1 constraint on adbc_fkey_child_test table, found: "
+      << child_table->n_table_constraints;
+
+  struct AdbcGetObjectsConstraint* child_constraint = child_table->table_constraints[0];
+
+  std::string_view child_constraint_type(child_constraint->constraint_type.data,
+                                         child_constraint->constraint_type.size_bytes);
+  ASSERT_EQ(child_constraint_type, "FOREIGN KEY");
+  ASSERT_EQ(child_constraint->n_column_names, 1)
+      << "expected constraint adbc_fkey_child_test_fkey to be applied to 1 column, "
+         "found: "
+      << child_constraint->n_column_names;
+
+  std::string_view child_constraint_column_name(
+      child_constraint->constraint_column_names[0].data,
+      child_constraint->constraint_column_names[0].size_bytes);
+  ASSERT_EQ(child_constraint_column_name, "parent_id");
+
+  std::string_view child_constraint_column_usage_fk_catalog(
+      child_constraint->constraint_column_usages[0]->fk_catalog.data,
+      child_constraint->constraint_column_usages[0]->fk_catalog.size_bytes);
+  std::string_view child_catalog = child_constraint_column_usage_fk_catalog;
+  std::string_view sqlite_default_catalog = "main";
+  std::string_view postgresql_default_catalog = "postgres";
+  EXPECT_PRED3(
+      [](auto child_catalog, auto sqlite_default_catalog,
+         auto postgresql_default_catalog) {
+        return child_catalog == sqlite_default_catalog ||
+               child_catalog == postgresql_default_catalog;
+      },
+      child_catalog, sqlite_default_catalog, postgresql_default_catalog);
+
+  std::string_view child_constraint_column_usage_fk_db_schema(
+      child_constraint->constraint_column_usages[0]->fk_db_schema.data,
+      child_constraint->constraint_column_usages[0]->fk_db_schema.size_bytes);
+  std::string_view child_db_schema = child_constraint_column_usage_fk_db_schema;
+  std::string_view sqlite_default_db_schema = "";
+  std::string_view postgresql_default_db_schema = "public";
+  EXPECT_PRED3(
+      [](auto child_db_schema, auto sqlite_default_db_schema,
+         auto postgresql_default_db_schema) {
+        return child_db_schema == sqlite_default_db_schema ||
+               child_db_schema == postgresql_default_db_schema;
+      },
+      child_db_schema, sqlite_default_db_schema, postgresql_default_db_schema);
+
+  std::string_view child_constraint_column_usage_fk_table(
+      child_constraint->constraint_column_usages[0]->fk_table.data,
+      child_constraint->constraint_column_usages[0]->fk_table.size_bytes);
+  ASSERT_EQ(child_constraint_column_usage_fk_table, "adbc_fkey_parent_test");
+
+  std::string_view child_constraint_column_usage_fk_column_name(
+      child_constraint->constraint_column_usages[0]->fk_column_name.data,
+      child_constraint->constraint_column_usages[0]->fk_column_name.size_bytes);
+  ASSERT_EQ(child_constraint_column_usage_fk_column_name, "id");
 }
 
 //------------------------------------------------------------

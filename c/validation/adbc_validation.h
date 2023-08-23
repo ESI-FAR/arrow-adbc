@@ -76,12 +76,24 @@ class DriverQuirks {
     return std::nullopt;
   }
 
-  /// \brief Get the statement to create a table with a primary key, or nullopt if not
-  /// supported.
+  /// \brief Get the statement to create a parent table with a primary key,
+  /// or nullopt if not supported.
   ///
-  /// The table should have one column:
-  /// - "alt_id" of Arrow type int64 (foreign key) referencing "id" in the primary key
-  virtual std::optional<std::string> ForeignKeyTableDdl(std::string_view name, std::string_view ref_name) const {
+  /// The parent table should have one column:
+  /// - "id" of Arrow type int64 (primary key)
+  virtual std::optional<std::string> ForeignKeyParentTableDdl(
+      std::string_view parent_name) const {
+    return std::nullopt;
+  }
+
+  /// \brief Get the statement to create a child table with a foreign key,
+  /// or nullopt if not supported.
+  ///
+  /// The child table should have one column:
+  /// - "parent_id" of Arrow type int64 (foreign key) referencing "id" in the primary key
+  /// table
+  virtual std::optional<std::string> ForeignKeyChildTableDdl(
+      std::string_view parent_name, std::string_view child_name) const {
     return std::nullopt;
   }
 

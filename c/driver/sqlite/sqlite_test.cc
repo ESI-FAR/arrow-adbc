@@ -92,14 +92,21 @@ class SqliteQuirks : public adbc_validation::DriverQuirks {
     return ddl;
   }
 
-  std::optional<std::string> ForeignKeyTableDdl(std::string_view name, std::string_view ref_name) const override {
+  std::optional<std::string> ForeignKeyParentTableDdl(
+      std::string_view parent_name) const override {
     std::string ddl = "CREATE TABLE ";
-    ddl += name;
-    ddl += " (alt_id INTEGER FOREIGN KEY(";
-    ddl += name;
-    ddl += ") REFERENCES ";
-    ddl += ref_name;
-    ddl += "(id))";
+    ddl += parent_name;
+    ddl += " (id INTEGER PRIMARY KEY)";
+    return ddl;
+  }
+
+  std::optional<std::string> ForeignKeyChildTableDdl(
+      std::string_view parent_name, std::string_view child_name) const override {
+    std::string ddl = "CREATE TABLE ";
+    ddl += child_name;
+    ddl += " (parent_id INTEGER REFERENCES ";
+    ddl += parent_name;
+    ddl += " (id));";
     return ddl;
   }
 
