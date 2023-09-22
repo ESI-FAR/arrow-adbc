@@ -953,25 +953,43 @@ void ConnectionTest::TestMetadataGetObjectsPrimaryKey() {
     GTEST_SKIP();
   }
 
+  // Set up primary key DDL
   std::optional<std::string> maybe_ddl = quirks()->PrimaryKeyTableDdl("adbc_pkey_test");
   if (!maybe_ddl.has_value()) {
     GTEST_SKIP();
   }
   std::string ddl = std::move(*maybe_ddl);
 
+  // Set up composite primary key DDL
+  std::optional<std::string> maybe_composite_ddl =
+      quirks()->CompositePrimaryKeyTableDdl("adbc_composite_pkey_test");
+  if (!maybe_composite_ddl.has_value()) {
+    GTEST_SKIP();
+  }
+  std::string composite_ddl = std::move(*maybe_composite_ddl);
+
+  // Empty database
   ASSERT_THAT(quirks()->DropTable(&connection, "adbc_pkey_test", &error),
+              IsOkStatus(&error));
+  ASSERT_THAT(quirks()->DropTable(&connection, "adbc_composite_pkey_test", &error),
               IsOkStatus(&error));
 
   {
-    Handle<AdbcStatement> statement;
-    ASSERT_THAT(AdbcStatementNew(&connection, &statement.value, &error),
-                IsOkStatus(&error));
-    ASSERT_THAT(AdbcStatementSetSqlQuery(&statement.value, ddl.c_str(), &error),
-                IsOkStatus(&error));
-    int64_t rows_affected = 0;
-    ASSERT_THAT(
-        AdbcStatementExecuteQuery(&statement.value, nullptr, &rows_affected, &error),
-        IsOkStatus(&error));
+    Handle<AdbcStatement> statements[2];
+    std::string ddls[2] = {ddl, composite_ddl};
+    int64_t rows_affected;
+
+    for (int ddl_index = 0; ddl_index < 2; ddl_index++) {
+      rows_affected = 0;
+      ASSERT_THAT(AdbcStatementNew(&connection, &statements[ddl_index].value, &error),
+                  IsOkStatus(&error));
+      ASSERT_THAT(AdbcStatementSetSqlQuery(&statements[ddl_index].value,
+                                           ddls[ddl_index].c_str(), &error),
+                  IsOkStatus(&error));
+      ASSERT_THAT(AdbcStatementExecuteQuery(&statements[ddl_index].value, nullptr,
+                                            &rows_affected, &error),
+                  IsOkStatus(&error));
+    }
   }
 
   adbc_validation::StreamReader reader;
@@ -988,6 +1006,7 @@ void ConnectionTest::TestMetadataGetObjectsPrimaryKey() {
   ASSERT_NE(*get_objects_data, nullptr)
       << "could not initialize the AdbcGetObjectsData object";
 
+  // Test primary key
   struct AdbcGetObjectsTable* table =
       AdbcGetObjectsDataGetTableByName(*get_objects_data, quirks()->catalog().c_str(),
                                        quirks()->db_schema().c_str(), "adbc_pkey_test");
@@ -1016,6 +1035,47 @@ void ConnectionTest::TestMetadataGetObjectsPrimaryKey() {
       constraint->constraint_column_names[0].data,
       constraint->constraint_column_names[0].size_bytes);
   ASSERT_EQ(constraint_column_name, "id");
+
+  // Test composite primary key
+  struct AdbcGetObjectsTable* composite_table = AdbcGetObjectsDataGetTableByName(
+      *get_objects_data, quirks()->catalog().c_str(), quirks()->db_schema().c_str(),
+      "adbc_composite_pkey_test");
+  ASSERT_NE(composite_table, nullptr) << "could not find adbc_composite_pkey_test table";
+
+  // The composite primary key table has two columns: id_primary_col1, id_primary_col2
+  ASSERT_EQ(composite_table->n_table_columns, 2);
+
+  struct AdbcGetObjectsConstraint* composite_constraint =
+      composite_table->table_constraints[0];
+
+  const char* parent_2_column_names[2] = {"id_primary_col1", "id_primary_col2"};
+  struct AdbcGetObjectsColumn* parent_2_column;
+  for (int column_name_index = 0; column_name_index < 2; column_name_index++) {
+    parent_2_column = AdbcGetObjectsDataGetColumnByName(
+        *get_objects_data, quirks()->catalog().c_str(), quirks()->db_schema().c_str(),
+        "adbc_composite_pkey_test", parent_2_column_names[column_name_index]);
+    ASSERT_NE(parent_2_column, nullptr)
+        << "could not find column " << parent_2_column_names[column_name_index]
+        << " on adbc_composite_pkey_test table";
+
+    std::string_view constraint_column_name(
+        composite_constraint->constraint_column_names[column_name_index].data,
+        composite_constraint->constraint_column_names[column_name_index].size_bytes);
+    ASSERT_EQ(constraint_column_name, parent_2_column_names[column_name_index]);
+  }
+
+  // There is 1 constraint: PRIMARY KEY, affecting two columns
+  ASSERT_EQ(composite_table->n_table_constraints, 1)
+      << "expected 1 constraint on adbc_pkey_test table, found: "
+      << composite_table->n_table_constraints;
+
+  std::string_view composite_constraint_type(
+      composite_constraint->constraint_type.data,
+      composite_constraint->constraint_type.size_bytes);
+  ASSERT_EQ(composite_constraint_type, "PRIMARY KEY");
+  ASSERT_EQ(composite_constraint->n_column_names, 2)
+      << "expected constraint adbc_pkey_test_pkey to be applied to 2 columns, found: "
+      << composite_constraint->n_column_names;
 }
 
 void ConnectionTest::TestMetadataGetObjectsCancel() {
